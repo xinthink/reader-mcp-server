@@ -65,9 +65,9 @@ def get_reader_context() -> ReaderContext:
     return cast(ReaderContext, ctx.request_context.lifespan_context)
 
 
-@mcp.resource("reader://documents/?loc={location}&after={updated_after}",
+@mcp.resource("reader://documents/location={location};after={after}",
               mime_type="application/json")
-async def list_documents(location: str, updated_after: str) -> Dict[str, Any]:
+async def list_documents(location: str, after: str) -> Dict[str, Any]:
     """
     List documents based on location (folder) and last modification time.
 
@@ -77,16 +77,20 @@ async def list_documents(location: str, updated_after: str) -> Dict[str, Any]:
             - 'feed': Documents in Feed state
             - 'archive': Documents in Archive state
             - 'library': All documents in Library (Feed + Archive)
-        updated_after: ISO 8601 timestamp to filter documents modified after this time
+        after: ISO 8601 timestamp to filter documents modified after this time
 
     Returns:
         A dict containing count, results list and pagination cursor
     """
     ctx = get_reader_context()
-    logger.debug(f"list documents {location} {updated_after}")
+    logger.debug(f"list documents @{location} after {after}")
 
     try:
-        response = await ctx.client.get("/list/")
+        response = await ctx.client.get("/list/",
+            params={
+                "location": location,
+                "updatedAfter": after,
+        })
         response.raise_for_status()
         data = response.json()
         return data
