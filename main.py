@@ -65,6 +65,37 @@ def get_reader_context() -> ReaderContext:
     return cast(ReaderContext, ctx.request_context.lifespan_context)
 
 
+def validate_list_params(location: str, after: str) -> Dict[str, str]:
+    """
+    Validate and filter list documents parameters.
+
+    Args:
+        location: The location parameter to validate
+        after: The timestamp parameter to validate
+
+    Returns:
+        Dict containing valid parameters
+    """
+    valid_locations = {'new', 'later', 'shortlist', 'archive', 'feed'}
+    params = {}
+
+    if location in valid_locations:
+        params['location'] = location
+    else:
+        logger.warning(f"Invalid location: {location}, parameter will be ignored")
+
+    try:
+        # Basic ISO 8601 format validation
+        if 'T' in after and (after.endswith('Z') or '+' in after):
+            params['updatedAfter'] = after
+        else:
+            logger.warning(f"Invalid ISO 8601 datetime: {after}, parameter will be ignored")
+    except (TypeError, ValueError):
+        logger.warning(f"Invalid datetime format: {after}, parameter will be ignored")
+
+    return params
+
+
 @mcp.resource("reader://documents/location={location};after={after}",
               mime_type="application/json")
 async def list_documents(location: str, after: str) -> Dict[str, Any]:
@@ -72,12 +103,8 @@ async def list_documents(location: str, after: str) -> Dict[str, Any]:
     List documents based on location (folder) and last modification time.
 
     Args:
-        location: The location where documents are stored. Valid values are:
-            - 'new': Documents in New state
-            - 'feed': Documents in Feed state
-            - 'archive': Documents in Archive state
-            - 'library': All documents in Library (Feed + Archive)
-        after: ISO 8601 timestamp to filter documents modified after this time
+        location: The location where documents are stored. Valid values are: new, later, shortlist, archive, feed
+        after: ISO 8601 datetime to filter documents modified after this time
 
     Returns:
         A dict containing count, results list and pagination cursor
@@ -86,11 +113,8 @@ async def list_documents(location: str, after: str) -> Dict[str, Any]:
     logger.debug(f"list documents @{location} after {after}")
 
     try:
-        response = await ctx.client.get("/list/",
-            params={
-                "location": location,
-                "updatedAfter": after,
-        })
+        params = validate_list_params(location, after)
+        response = await ctx.client.get("/list/", params=params)
         response.raise_for_status()
         data = response.json()
         return data
