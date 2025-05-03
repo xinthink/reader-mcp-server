@@ -100,7 +100,7 @@ def validate_list_params(location: Optional[Literal['new', 'later', 'shortlist',
         params['pageCursor'] = page_cursor
     return params
 
-@mcp.tool("reader.list_documents")
+@mcp.tool("list_documents")
 async def list_documents(location: Optional[Literal['new', 'later', 'shortlist', 'archive', 'feed']] = None,
                          updatedAfter: Optional[str] = None,
                          withContent: Optional[bool] = False,
