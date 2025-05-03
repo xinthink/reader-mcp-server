@@ -64,13 +64,14 @@ def get_reader_context() -> ReaderContext:
     return cast(ReaderContext, ctx.request_context.lifespan_context)
 
 
-def validate_list_params(location: str, after: str) -> Dict[str, str]:
+def validate_list_params(location: str, after: str, with_content: str) -> Dict[str, str]:
     """
     Validate and filter list documents parameters.
 
     Args:
         location: The location parameter to validate
         after: The timestamp parameter to validate
+        with_content: Whether to include html_content in results
 
     Returns:
         Dict containing valid parameters
@@ -92,27 +93,31 @@ def validate_list_params(location: str, after: str) -> Dict[str, str]:
     except (TypeError, ValueError):
         logger.warning(f"Invalid datetime format: {after}, parameter will be ignored")
 
+    if with_content and with_content.lower() in {'true', 'false'}:
+        params['withHtmlContent'] = with_content.lower() == 'true'
+
     return params
 
 
-@mcp.resource("reader://documents/location={location};after={after}",
+@mcp.resource("reader://documents/location={location};after={after};withContent={with_content}",
               mime_type="application/json")
-async def list_documents(location: str, after: str) -> Dict[str, Any]:
+async def list_documents(location: str, after: str, with_content: str) -> Dict[str, Any]:
     """
-    List documents based on location (folder) and last modification time.
+    List documents based on location (folder), last modification time, and optionally include html content.
 
     Args:
         location: The location where documents are stored. Valid values are: new, later, shortlist, archive, feed
         after: ISO 8601 datetime to filter documents modified after this time
+        withContent: If true, include HTML content in each document (default: false)
 
     Returns:
         A dict containing count, results list and pagination cursor
     """
     ctx = get_reader_context()
-    logger.debug(f"list documents @{location} after {after}")
+    logger.debug(f"list documents @{location} after {after} withContent={with_content}")
 
     try:
-        params = validate_list_params(location, after)
+        params = validate_list_params(location, after, with_content)
         response = await ctx.client.get("/list/", params=params)
         response.raise_for_status()
         data = response.json()
