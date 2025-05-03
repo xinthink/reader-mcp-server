@@ -17,11 +17,10 @@ from mcp.server.fastmcp import FastMCP
 
 
 # Set up logging
-logger = logging.getLogger("reader-server")
+logger = logging.getLogger("reader-mcp-server")
 
 # Reader API endpoints
 READER_API_BASE_URL = "https://readwise.io/api/v3"
-READER_AUTH_URL = "https://readwise.io/api/v2/auth/"
 
 
 @dataclass
@@ -36,10 +35,10 @@ async def reader_lifespan(_: FastMCP):
     """Manage the lifecycle of Reader API client"""
     # Get access token from environment variables
     load_dotenv()
-    access_token = os.environ.get("READER_ACCESS_TOKEN")
+    access_token = os.environ.get("ACCESS_TOKEN")
     if not access_token:
-        logger.error("READER_ACCESS_TOKEN environment variable is not set")
-        raise ValueError("READER_ACCESS_TOKEN environment variable is not set")
+        logger.error("ACCESS_TOKEN environment variable is not set")
+        raise ValueError("ACCESS_TOKEN environment variable is not set")
 
     # Create HTTP client
     async with httpx.AsyncClient(
