@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, Union, cast, Literal
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from models import ListDocumentResponse
 
@@ -100,11 +101,15 @@ def validate_list_params(location: Optional[Literal['new', 'later', 'shortlist',
         params['pageCursor'] = page_cursor
     return params
 
-@mcp.tool("list_documents")
-async def list_documents(location: Optional[Literal['new', 'later', 'shortlist', 'archive', 'feed']] = None,
-                         updatedAfter: Optional[str] = None,
-                         withContent: Optional[bool] = False,
-                         pageCursor: Optional[str] = None) -> ListDocumentResponse:
+@mcp.tool()
+async def list_documents(
+        location: Optional[Literal['new', 'later', 'shortlist', 'archive', 'feed']] = Field(
+            default=None,
+            description="The folder where the document is located, supports 'new', 'later', 'shortlist', 'archive', 'feed'"),
+        updatedAfter: Optional[str] = Field(default=None, description="Filter by update time (ISO8601)"),
+        withContent: Optional[bool] = Field(default=False, description="Whether to include HTML content"),
+        pageCursor: Optional[str] = Field(default=None, description="Pagination cursor"),
+    ) -> ListDocumentResponse:
     """
     Get the document list via the Reader API.
     Args:
