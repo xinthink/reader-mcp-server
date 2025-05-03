@@ -1,10 +1,11 @@
 # Reader MCP Server
-## Overview
-A Model Context Protocol (MCP) server that seamlessly integrates with your [Readwise Reader](https://readwise.io/reader_api) library. This server enables MCP-compatible clients like Claude and VS Code to interact with your Reader library, providing capabilities for document listing, retrieval, and updates. It serves as a bridge between MCP clients and your personal knowledge repository in Readwise Reader.
 
 <a href="https://glama.ai/mcp/servers/@xinthink/reader-mcp-server">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/@xinthink/reader-mcp-server/badge" alt="Reader Server MCP server" />
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@xinthink/reader-mcp-server/badge" alt="Reader MCP Server" />
 </a>
+
+## Overview
+A Model Context Protocol (MCP) server that seamlessly integrates with your [Readwise Reader](https://readwise.io/reader_api) library. This server enables MCP-compatible clients like Claude and VS Code to interact with your Reader library, providing capabilities for document listing, retrieval, and updates. It serves as a bridge between MCP clients and your personal knowledge repository in Readwise Reader.
 
 ## Components
 
