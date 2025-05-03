@@ -10,10 +10,12 @@ import os
 import httpx
 import logging
 from dotenv import load_dotenv
-from typing import Dict, Any, cast
+from typing import Dict, Any, Optional, Union, cast, Literal
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from mcp.server.fastmcp import FastMCP
+
+from models import ListDocumentResponse
 
 
 # Set up logging
@@ -21,6 +23,7 @@ logger = logging.getLogger("reader-mcp-server")
 
 # Reader API endpoints
 READER_API_BASE_URL = "https://readwise.io/api/v3"
+VALID_LOCATIONS = {'new', 'later', 'shortlist', 'archive', 'feed'}
 
 
 @dataclass
@@ -64,66 +67,64 @@ def get_reader_context() -> ReaderContext:
     return cast(ReaderContext, ctx.request_context.lifespan_context)
 
 
-def validate_list_params(location: str, after: str, with_content: str) -> Dict[str, str]:
+def validate_list_params(location: Optional[Literal['new', 'later', 'shortlist', 'archive', 'feed']] = None,
+                         after: Optional[str] = None,
+                         with_content: Optional[bool] = False,
+                         page_cursor: Optional[str] = None) -> Dict[str, Any]:
     """
-    Validate and filter list documents parameters.
-
+    Validate and filter document list parameters.
     Args:
-        location: The location parameter to validate
+        location: The location parameter to validate (only supports 'new', 'later', 'shortlist', 'archive', 'feed')
         after: The timestamp parameter to validate
-        with_content: Whether to include html_content in results
-
+        with_content: Whether to include html_content
+        page_cursor: Pagination cursor
     Returns:
         Dict containing valid parameters
     """
-    valid_locations = {'new', 'later', 'shortlist', 'archive', 'feed'}
-    params = {}
 
-    if location in valid_locations:
+    params = {}
+    if location in VALID_LOCATIONS:
         params['location'] = location
     else:
-        logger.warning(f"Invalid location: {location}, parameter will be ignored")
-
+        logger.warning(f"Invalid `location`: '{location}', parameter will be ignored")
     try:
-        # Basic ISO 8601 format validation
-        if 'T' in after and (after.endswith('Z') or '+' in after):
+        if after and 'T' in after and (after.endswith('Z') or '+' in after):
             params['updatedAfter'] = after
-        else:
+        elif after:
             logger.warning(f"Invalid ISO 8601 datetime: {after}, parameter will be ignored")
     except (TypeError, ValueError):
         logger.warning(f"Invalid datetime format: {after}, parameter will be ignored")
-
-    if with_content and with_content.lower() in {'true', 'false'}:
-        params['withHtmlContent'] = with_content.lower() == 'true'
-
+    if with_content:
+        params['withHtmlContent'] = with_content
+    if page_cursor:
+        params['pageCursor'] = page_cursor
     return params
 
-
-@mcp.resource("reader://documents/location={location};after={after};withContent={with_content}",
-              mime_type="application/json")
-async def list_documents(location: str, after: str, with_content: str) -> Dict[str, Any]:
+@mcp.tool("reader.list_documents")
+async def list_documents(location: Optional[Literal['new', 'later', 'shortlist', 'archive', 'feed']] = None,
+                         updatedAfter: Optional[str] = None,
+                         withContent: Optional[bool] = False,
+                         pageCursor: Optional[str] = None) -> ListDocumentResponse:
     """
-    List documents based on location (folder), last modification time, and optionally include html content.
-
+    Get the document list via the Reader API.
     Args:
-        location: The location where documents are stored. Valid values are: new, later, shortlist, archive, feed
-        after: ISO 8601 datetime to filter documents modified after this time
-        withContent: If true, include HTML content in each document (default: false)
-
+        location: The folder where the document is located, supports 'new', 'later', 'shortlist', 'archive', 'feed' (optional)
+        updatedAfter: Filter by update time (optional, ISO8601)
+        withContent: Whether to include HTML content (optional, default false)
+        pageCursor: Pagination cursor (optional)
     Returns:
-        A dict containing count, results list and pagination cursor
+        Document list JSON
     """
     ctx = get_reader_context()
-    logger.debug(f"list documents @{location} after {after} withContent={with_content}")
-
+    logger.info(f"tool list_documents: location={location}, updatedAfter={updatedAfter}, withContent={withContent}, pageCursor={pageCursor}")
     try:
-        params = validate_list_params(location, after, with_content)
+        params = validate_list_params(location, updatedAfter, withContent, pageCursor)
         response = await ctx.client.get("/list/", params=params)
         response.raise_for_status()
         data = response.json()
         return data
     except Exception as e:
-        logger.error(f"Error retrieving document list: {str(e)}")
+        logger.error(f"Error in tool list_documents: {str(e)}")
         raise
 
 

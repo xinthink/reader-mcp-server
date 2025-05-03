@@ -1,20 +1,20 @@
 # Reader MCP Server
-
 ## Overview
-A Model Context Protocol (MCP) server implementation that exposes your [Readwise Reader](https://readwise.io/reader_api) documents as resources. This server enables unified retrieval and integration of your reading highlights and documents from Readwise Reader.
+A Model Context Protocol (MCP) server that seamlessly integrates with your [Readwise Reader](https://readwise.io/reader_api) library. This server enables MCP-compatible clients like Claude and VS Code to interact with your Reader library, providing capabilities for document listing, retrieval, and updates. It serves as a bridge between MCP clients and your personal knowledge repository in Readwise Reader.
 
 ## Components
-- Exposes Readwise Reader documents as MCP resources
-- Supports filtering documents by folder (`location`) and time (`after`)
-- Returns standard JSON responses with pagination support
 
-### Resources
-- Retrieve documents in a specific folder and after a specific time:
-  ```
-  reader://documents/location={location};after={after}
-  ```
-  - `location` options: `new`, `later`, `shortlist`, `archive`, `feed`
-  - `after`: ISO 8601 timestamp, e.g. `2025-01-01T00:00:00Z`
+### Tools
+
+- `list_documents`
+  - List documents from Reader with flexible filtering and pagination.
+  - **Input:**
+    - `location` (string, optional): Folder to filter by. One of `new`, `later`, `shortlist`, `archive`, `feed`.
+    - `updatedAfter` (string, optional): Only return documents updated after this ISO8601 timestamp.
+    - `withContent` (boolean, optional): If true, include HTML content in results (default: false).
+    - `pageCursor` (string, optional): Pagination cursor for fetching the next page.
+  - **Returns:**
+    - JSON object with a list of documents, each including metadata and (optionally) content, plus pagination info.
 
 ## Usage with MCP Clients
 
