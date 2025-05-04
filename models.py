@@ -25,6 +25,7 @@ class ReaderDocument:
     notes: Optional[str] = None
     published_date: Optional[str] = None
     summary: Optional[str] = None
+    html_content: Optional[str] = None
     image_url: Optional[str] = None
     parent_id: Optional[str] = None
 
@@ -57,6 +58,7 @@ class ReaderDocument:
             notes=doc.get('notes'),
             published_date=doc.get('published_date'),
             summary=doc.get('summary'),
+            html_content=doc.get('html_content'),
             image_url=doc.get('image_url'),
             parent_id=doc.get('parent_id'),
             reading_progress=doc.get('reading_progress', 0.0),
