@@ -39,10 +39,11 @@ async def reader_lifespan(_: FastMCP):
     """Manage the lifecycle of Reader API client"""
     # Get access token from environment variables
     load_dotenv()
-    access_token = os.environ.get("ACCESS_TOKEN")
+    # Support READWISE_ACCESS_TOKEN as primary, with backward compatibility for ACCESS_TOKEN
+    access_token = os.environ.get("READWISE_ACCESS_TOKEN") or os.environ.get("ACCESS_TOKEN")
     if not access_token:
-        logger.error("ACCESS_TOKEN environment variable is not set")
-        raise ValueError("ACCESS_TOKEN environment variable is not set")
+        logger.error("READWISE_ACCESS_TOKEN environment variable is not set (ACCESS_TOKEN is also supported for backward compatibility)")
+        raise ValueError("READWISE_ACCESS_TOKEN environment variable is not set")
 
     # Create HTTP client
     async with httpx.AsyncClient(
