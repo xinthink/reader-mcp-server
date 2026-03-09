@@ -51,3 +51,34 @@ To use this server with Claude Desktop, VS Code, or any MCP-compatible client, a
 
 ---
 For more information, see the [Readwise Reader API documentation](https://readwise.io/reader_api) and [MCP documentation](https://modelcontextprotocol.io/).
+
+---
+
+## Reader Skill
+
+This repository also includes a standalone skill for interacting with Readwise Reader API directly via HTTP requests. The skill provides knowledge and examples for using the Reader API without requiring an MCP server.
+
+### Features
+
+- List, create, update, and delete documents
+- Full API coverage (list, save, update, delete, tags, bulk operations)
+- Authentication and rate limit guidance
+- Code examples in Python
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/user/reader.git
+cd reader
+
+# Option 1: Use npx skills (recommended)
+npx skills add ./skills/reader
+
+# Option 2: Manual symlink
+ln -s $(pwd)/skills/reader ~/.claude/skills/reader
+```
+
+### Usage
+
+Once installed, the skill will be automatically triggered when you ask about Readwise Reader, saving articles, or managing your reading list.

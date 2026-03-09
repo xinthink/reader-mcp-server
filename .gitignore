@@ -6,11 +6,14 @@ dist/
 wheels/
 *.egg-info
 
+# Dependencies
+uv.lock
+
 # Virtual environments
 .venv
 
-# Knowledge docs
-kb/
-
 # Env
 .env
+
+# Local settings
+*.local.*

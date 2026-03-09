@@ -61,3 +61,40 @@ The server exposes one tool:
 - `list_documents` - Lists documents from the Readwise Reader library with flexible filtering options
 
 This follows the MCP pattern where tools allow LLMs to take actions (in this case, retrieving document information from an external API).
+
+## Reader Skill
+
+This repository also includes a standalone skill (`skills/reader/` directory) that provides equivalent functionality through direct API knowledge rather than MCP server integration.
+
+### Skill Structure
+
+```
+skills/reader/
+├── SKILL.md              # Main skill file with frontmatter
+└── references/
+    ├── api-reference.md  # Complete API documentation
+    ├── authentication.md # Token setup guide
+    ├── rate-limits.md    # Rate limiting info
+    ├── list-documents.md # List API examples
+    ├── create-document.md # Save API examples
+    └── update-document.md # Update/Delete examples
+```
+
+### Installation
+
+The skill can be installed via:
+```bash
+npx skills add ./skills/reader
+```
+
+Or manually linked:
+```bash
+ln -s $(pwd)/skills/reader ~/.claude/skills/reader
+```
+
+### Key Differences from MCP Server
+
+- **MCP Server**: Programmatic tool for MCP-compatible clients (Claude Desktop, VS Code)
+- **Skill**: Knowledge package that teaches agents to use Reader API directly
+
+Both serve the same purpose but through different integration patterns.
