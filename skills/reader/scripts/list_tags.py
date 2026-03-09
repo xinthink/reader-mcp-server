@@ -52,6 +52,7 @@ EXAMPLES:
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -59,6 +60,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import (
+    RateLimitError,
     create_client,
     handle_response,
     raise_error,
@@ -77,12 +79,18 @@ def fetch_tags_page(client, cursor: Optional[str] = None) -> dict:
 
 
 def fetch_all_tags(client) -> dict:
-    """Fetch all tags across all pages."""
+    """Fetch all tags across all pages with rate limit retry logic."""
     all_tags = []
     cursor: Optional[str] = None
 
     while True:
-        data = fetch_tags_page(client, cursor)
+        try:
+            data = fetch_tags_page(client, cursor)
+        except RateLimitError as e:
+            # Sleep for retry_after_seconds and retry
+            time.sleep(e.retry_after_seconds)
+            data = fetch_tags_page(client, cursor)
+
         all_tags.extend(data.get("results", []))
         cursor = data.get("nextPageCursor")
 
@@ -116,6 +124,8 @@ def main():
 
             output_json(data)
 
+        except RateLimitError as e:
+            raise_error(e)
         except Exception as e:
             if hasattr(e, "to_json"):
                 raise_error(e)  # type: ignore[arg-type]

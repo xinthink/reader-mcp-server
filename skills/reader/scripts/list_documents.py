@@ -14,7 +14,7 @@ OPTIONS:
     --tag <str>            Filter by tag (can be specified multiple times, max 5)
     --updated-after <str>  Filter by update time (ISO 8601 format)
     --id <str>             Get a specific document by ID
-    --limit <int>          Maximum results per page (1-1000, default: 20)
+    --limit <int>          Maximum results per page (1-100, default: 20)
     --with-content         Include full HTML content in response
     --cursor <str>         Pagination cursor for next page
     --all                  Fetch all pages automatically
@@ -88,6 +88,7 @@ EXAMPLES:
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 # Add scripts folder to path for imports
@@ -96,6 +97,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils import (
     APIError,
     EXIT_INVALID_ARGS,
+    RateLimitError,
     create_client,
     handle_response,
     raise_error,
@@ -116,6 +118,11 @@ def build_params(args: argparse.Namespace) -> dict:
         params["location"] = args.location
 
     if args.category:
+        valid_categories = {"article", "email", "rss", "highlight", "note", "pdf", "epub", "tweet", "video"}
+        if args.category not in valid_categories:
+            raise ValueError(
+                f"Invalid category: {args.category}. Must be one of: {', '.join(sorted(valid_categories))}"
+            )
         params["category"] = args.category
 
     if args.tag:
@@ -129,9 +136,17 @@ def build_params(args: argparse.Namespace) -> dict:
     if args.id:
         params["id"] = args.id
 
-    if args.limit:
-        params["pageCursor"] = None  # First page
-        params["withHtmlContent"] = args.with_content
+    if args.limit is not None:
+        # Validate limit range (API accepts 1-100)
+        if args.limit < 1 or args.limit > 100:
+            raise ValueError("limit must be between 1 and 100")
+        params["limit"] = args.limit
+
+    if args.with_content:
+        params["withHtmlContent"] = True
+
+    if args.cursor:
+        params["pageCursor"] = args.cursor
 
     return params
 
@@ -146,7 +161,7 @@ def fetch_page(client, params: dict) -> dict:
 
 
 def fetch_all_pages(client, params: dict) -> dict:
-    """Fetch all pages of results."""
+    """Fetch all pages of results with rate limit retry logic."""
     all_results = []
     total_count = 0
     cursor = None
@@ -159,7 +174,13 @@ def fetch_all_pages(client, params: dict) -> dict:
         else:
             page_params.pop("pageCursor", None)
 
-        data = fetch_page(client, page_params)
+        try:
+            data = fetch_page(client, page_params)
+        except RateLimitError as e:
+            # Sleep for retry_after_seconds and retry
+            time.sleep(e.retry_after_seconds)
+            data = fetch_page(client, page_params)
+
         total_count = data.get("count", 0)
         results = data.get("results", [])
         all_results.extend(results)
@@ -186,7 +207,7 @@ def main():
     )
 
     parser.add_argument("--location", help="Filter by location (new, later, shortlist, archive, feed)")
-    parser.add_argument("--category", help="Filter by category")
+    parser.add_argument("--category", help="Filter by category (article, email, rss, highlight, note, pdf, epub, tweet, video)")
     parser.add_argument("--tag", action="append", help="Filter by tag (can be specified multiple times)")
     parser.add_argument("--updated-after", help="Filter by update time (ISO 8601)")
     parser.add_argument("--id", help="Get specific document by ID")
@@ -201,9 +222,6 @@ def main():
         with create_client() as client:
             if args.all:
                 data = fetch_all_pages(client, params)
-            elif args.cursor:
-                params["pageCursor"] = args.cursor
-                data = fetch_page(client, params)
             else:
                 data = fetch_page(client, params)
 
@@ -211,17 +229,17 @@ def main():
             if "fetched" not in data:
                 data["fetched"] = len(data.get("results", []))
             output_json(data)
+    except RateLimitError as e:
+        raise_error(e)
     except ValueError as e:
         raise_error(APIError(
             type="validation_error",
             message=str(e),
+            hint="Check your input parameters",
             exit_code=EXIT_INVALID_ARGS
         ))
     except APIError as e:
         raise_error(e)
-    except Exception as e:
-        # Re-raise non-APIError exceptions
-        raise
 
 
 if __name__ == "__main__":
