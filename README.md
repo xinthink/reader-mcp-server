@@ -68,16 +68,10 @@ This repository also includes a standalone skill for interacting with Readwise R
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/user/reader.git
-cd reader
-
-# Option 1: Use npx skills (recommended)
-npx skills add ./skills/reader
-
-# Option 2: Manual symlink
-ln -s $(pwd)/skills/reader ~/.claude/skills/reader
+npx skills add xinthink/reader-mcp-server --skill reader
 ```
+
+For more information on installing and using skills, see the [Vercel Labs Skills documentation](https://github.com/vercel-labs/skills).
 
 ### Usage
 
