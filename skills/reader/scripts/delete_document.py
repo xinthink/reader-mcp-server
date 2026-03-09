@@ -70,7 +70,7 @@ from utils import (
     EXIT_INVALID_ARGS,
     create_client,
     handle_response,
-    output_error,
+    raise_error,
     output_json,
     read_payload,
 )
@@ -123,13 +123,13 @@ def main():
     try:
         payload = read_payload(args.file)
     except APIError as e:
-        output_error(e)
+        raise_error(e)
 
     # Validate payload
     try:
         validate_payload(payload)
     except APIError as e:
-        output_error(e)
+        raise_error(e)
 
     ids = payload["ids"]
 

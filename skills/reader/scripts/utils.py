@@ -13,7 +13,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, NoReturn, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -46,6 +46,26 @@ class APIError(Exception):
         if self.hint:
             result["error"]["hint"] = self.hint
         return result
+
+
+@dataclass
+class RateLimitError(Exception):
+    """Error response for rate limit (429) errors"""
+
+    error_type: str = "rate_limit_error"
+    message: str = "Rate limit exceeded"
+    retry_after_seconds: int = 60
+    exit_code: int = EXIT_RATE_LIMIT
+
+    def to_json(self) -> dict:
+        """Convert error to JSON format for stderr output."""
+        return {
+            "error": {
+                "type": self.error_type,
+                "message": self.message,
+                "retry_after_seconds": self.retry_after_seconds,
+            }
+        }
 
 
 def get_access_token() -> str:
@@ -88,10 +108,14 @@ def create_client(timeout: float = 30.0) -> httpx.Client:
     )
 
 
-def output_error(error: APIError) -> None:
-    """Output error to stderr in JSON format and exit."""
-    print(json.dumps(error.to_json()), file=sys.stderr)
-    sys.exit(error.exit_code)
+def raise_error(error: Exception) -> NoReturn:
+    """Raise an error by outputting to stderr in JSON format and exiting."""
+    # Check if error has to_json method
+    if hasattr(error, "to_json"):
+        print(json.dumps(error.to_json()), file=sys.stderr)  # type: ignore[attr-defined]
+    else:
+        print(json.dumps({"error": {"type": "unknown_error", "message": str(error)}}), file=sys.stderr)
+    sys.exit(getattr(error, "exit_code", EXIT_API_ERROR))
 
 
 def handle_response(
@@ -115,27 +139,13 @@ def handle_response(
     if response.status_code < 400:
         return response.json()
 
-    # Rate limit - retry with backoff
+    # Rate limit - raise error for client to handle
     if response.status_code == 429:
-        if retry_count >= MAX_RETRIES:
-            retry_after = response.headers.get("Retry-After", str(RETRY_DELAY))
-            raise APIError(
-                type="rate_limit_error",
-                message=f"Rate limit exceeded after {MAX_RETRIES} retries",
-                hint=f"Wait {retry_after} seconds before retrying",
-                exit_code=EXIT_RATE_LIMIT,
-            )
-
         retry_after = int(response.headers.get("Retry-After", RETRY_DELAY))
-        time.sleep(retry_after)
-
-        # Retry the request
-        new_response = client.request(
-            method=response.request.method,
-            url=response.request.url,
-            content=response.request.content,
+        raise RateLimitError(
+            message=f"Rate limit exceeded",
+            retry_after_seconds=retry_after,
         )
-        return handle_response(new_response, client, retry_count + 1)
 
     # Server errors - retry
     if response.status_code >= 500:

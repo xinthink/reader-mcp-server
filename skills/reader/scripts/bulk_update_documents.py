@@ -94,7 +94,7 @@ from utils import (
     APIError,
     EXIT_INVALID_ARGS,
     create_client,
-    output_error,
+    raise_error,
     output_json,
     read_payload,
 )
@@ -180,15 +180,13 @@ def main():
     try:
         payload = read_payload(args.file)
     except APIError as e:
-        output_error(e)
-        return  # Never reached, but makes type checker happy
+        raise_error(e)
 
     # Validate payload
     try:
         validate_payload(payload)
     except APIError as e:
-        output_error(e)
-        return  # Never reached, but makes type checker happy
+        raise_error(e)
 
     # Dry run - just validate
     if args.dry_run:
@@ -201,7 +199,7 @@ def main():
             result = bulk_update_documents(client, payload)
             output_json(result)
         except APIError as e:
-            output_error(e)
+            raise_error(e)
 
 
 if __name__ == "__main__":

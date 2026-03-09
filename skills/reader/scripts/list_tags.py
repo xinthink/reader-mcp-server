@@ -10,7 +10,6 @@ USAGE:
 OPTIONS:
     --cursor <str>    Pagination cursor for next page
     --all             Fetch all pages automatically
-    --output <str>    Output format: json (default), simple
     --help            Show this help message
 
 OUTPUT:
@@ -24,10 +23,6 @@ OUTPUT:
             }
         ]
     }
-
-    With --output simple:
-    tag-key: Tag Name
-    tag-key-2: Another Tag
 
 ERRORS:
     Exit codes:
@@ -53,30 +48,27 @@ EXAMPLES:
 
     # Fetch all pages
     python scripts/list_tags.py --all
-
-    # Simple output format
-    python scripts/list_tags.py --output simple
-
-REFERENCES:
-    - Usage Guide: references/usage-guide.md
 """
 
 import argparse
 import sys
+import time
 from pathlib import Path
+from typing import Optional
 
 # Add scripts folder to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import (
+    RateLimitError,
     create_client,
     handle_response,
-    output_error,
+    raise_error,
     output_json,
 )
 
 
-def fetch_tags_page(client, cursor: str = None) -> dict:
+def fetch_tags_page(client, cursor: Optional[str] = None) -> dict:
     """Fetch a single page of tags."""
     params = {}
     if cursor:
@@ -87,12 +79,18 @@ def fetch_tags_page(client, cursor: str = None) -> dict:
 
 
 def fetch_all_tags(client) -> dict:
-    """Fetch all tags across all pages."""
+    """Fetch all tags across all pages with rate limit retry logic."""
     all_tags = []
-    cursor = None
+    cursor: Optional[str] = None
 
     while True:
-        data = fetch_tags_page(client, cursor)
+        try:
+            data = fetch_tags_page(client, cursor)
+        except RateLimitError as e:
+            # Sleep for retry_after_seconds and retry
+            time.sleep(e.retry_after_seconds)
+            data = fetch_tags_page(client, cursor)
+
         all_tags.extend(data.get("results", []))
         cursor = data.get("nextPageCursor")
 
@@ -105,14 +103,6 @@ def fetch_all_tags(client) -> dict:
     }
 
 
-def format_simple(data: dict) -> str:
-    """Format tags as simple key: name output."""
-    lines = []
-    for tag in data.get("results", []):
-        lines.append(f"{tag.get('key', '')}: {tag.get('name', '')}")
-    return "\n".join(lines)
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="List all tags from Readwise Reader library",
@@ -120,7 +110,6 @@ def main():
     )
     parser.add_argument("--cursor", help="Pagination cursor")
     parser.add_argument("--all", action="store_true", help="Fetch all pages")
-    parser.add_argument("--output", choices=["json", "simple"], default="json", help="Output format")
 
     args = parser.parse_args()
 
@@ -133,14 +122,13 @@ def main():
             else:
                 data = fetch_tags_page(client)
 
-            if args.output == "simple":
-                print(format_simple(data))
-            else:
-                output_json(data)
+            output_json(data)
 
+        except RateLimitError as e:
+            raise_error(e)
         except Exception as e:
             if hasattr(e, "to_json"):
-                output_error(e)
+                raise_error(e)  # type: ignore[arg-type]
             raise
 
 

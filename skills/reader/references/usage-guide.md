@@ -30,6 +30,8 @@ READWISE_ACCESS_TOKEN=your-token-here python scripts/list_documents.py
 
 Get your token from: https://readwise.io/access_token
 
+---
+
 ## Setup
 
 Install the required dependencies before using the scripts:
@@ -42,6 +44,8 @@ pip install -r requirements.txt
 The scripts require:
 - `httpx` - Async HTTP client for API requests
 - `python-dotenv` - Environment variable management
+
+---
 
 ## Scripts Overview
 
@@ -56,124 +60,224 @@ The scripts require:
 
 ---
 
-## Input Schemas
+## list_documents.py
 
-### create_document.py
+Query documents from your Reader library with flexible filtering.
 
-```json
-{
-  "url": "https://...",              // REQUIRED
-  "title": "...",                    // optional
-  "author": "...",                   // optional
-  "summary": "...",                  // optional
-  "published_date": "YYYY-MM-DD",    // optional
-  "image_url": "...",                // optional
-  "location": "new",                 // optional: new, later, archive, feed
-  "category": "...",                 // optional
-  "tags": ["tag1", "tag2"],          // optional
-  "notes": "...",                    // optional
-  "html": "...",                     // optional - custom HTML content
-  "should_clean_html": true          // optional - default: true
-}
+### Usage
+
+```bash
+python scripts/list_documents.py [OPTIONS]
 ```
 
-### update_document.py
+### CLI Options
 
-```json
-{
-  "id": "...",                       // REQUIRED
-  "title": "...",                    // optional
-  "location": "...",                 // optional: new, later, shortlist, archive, feed
-  "tags": ["tag1", "tag2"],          // optional - replaces existing tags
-  "notes": "...",                    // optional
-  "seen": true                       // optional
-}
-```
+| Option | Type | Default | Valid Values | Description |
+|--------|------|---------|--------------|-------------|
+| `--location` | string | - | `new`, `later`, `shortlist`, `archive`, `feed` | Filter by location |
+| `--category` | string | - | `article`, `email`, `rss`, `highlight`, `note`, `pdf`, `epub`, `tweet`, `video` | Filter by category |
+| `--tag` | string[] | - | Any tag key | Filter by tag (max 5, can repeat) |
+| `--updated-after` | ISO 8601 | - | Date string | Filter by update time |
+| `--id` | string | - | Document ID | Get specific document |
+| `--limit` | integer | 20 | 1-100 | Max results per page |
+| `--with-content` | boolean | false | - | Include HTML content |
+| `--cursor` | string | - | - | Pagination cursor |
+| `--all` | boolean | false | - | Fetch all pages |
 
-### bulk_update_documents.py
-
-```json
-{
-  "updates": [                       // REQUIRED, max 50 items
-    {"id": "...", "location": "archive"},
-    {"id": "...", "tags": ["read"]}
-  ]
-}
-```
-
-### delete_document.py
-
-```json
-{
-  "ids": ["id1", "id2", ...]         // REQUIRED, one or more document IDs
-}
-```
-
----
-
-## Output Schemas
-
-### list_documents.py
+### Output Schema
 
 ```json
 {
   "count": 2304,
   "fetched": 20,
   "next_cursor": "abc123...",
-  "results": [
-    {
-      "id": "doc-id",
-      "title": "Document Title",
-      "url": "https://original-url.com",
-      "source_url": "https://read.readwise.io/...",
-      "author": "Author Name",
-      "source": "Source Name",
-      "category": "article",
-      "location": "later",
-      "tags": {"tag-key": {"name": "Tag Name"}},
-      "site_name": "Website",
-      "word_count": 1500,
-      "notes": "User notes",
-      "summary": "Document summary",
-      "published_date": "2024-01-15",
-      "image_url": "https://...",
-      "reading_progress": 0.75,
-      "created_at": "2024-01-15T10:00:00Z",
-      "updated_at": "2024-01-16T15:30:00Z",
-      "saved_at": "2024-01-15T10:00:00Z"
-    }
-  ]
+  "results": [...]
 }
 ```
 
-**Key fields:**
-- `id`: Unique document identifier (used for updates/deletes)
-- `location`: Current folder (new, later, shortlist, archive, feed)
-- `reading_progress`: Float 0.0-1.0
-- `tags`: Object with tag keys as property names
+### Examples
 
-### create_document.py
+```bash
+# List documents in "later" folder
+python scripts/list_documents.py --location later
+
+# Filter by category
+python scripts/list_documents.py --category article
+
+# Filter by multiple tags
+python scripts/list_documents.py --tag important --tag reference
+
+# Fetch all documents in archive
+python scripts/list_documents.py --location archive --all
+```
+
+---
+
+## create_document.py
+
+Save a new URL or content to your Reader library.
+
+### Usage
+
+```bash
+echo '<json>' | python scripts/create_document.py
+python scripts/create_document.py --file payload.json
+```
+
+### Input Schema
+
+| Field | Type | Required | Valid Values | Description |
+|-------|------|----------|--------------|-------------|
+| `url` | string | **Yes** | Valid URL | Document URL to save |
+| `title` | string | No | Text | Override title |
+| `author` | string | No | Text | Override author |
+| `summary` | string | No | Text | Override summary |
+| `published_date` | ISO 8601 | No | `2020-07-14T20:11:24+00:00` | Publication date |
+| `image_url` | string | No | Valid URL | Cover image URL |
+| `location` | string | No | `new`, `later`, `archive`, `feed` | Initial location |
+| `category` | string | No | `article`, `email`, `rss`, `highlight`, `note`, `pdf`, `epub`, `tweet`, `video` | Category |
+| `tags` | string[] | No | Array of strings | Tags to apply |
+| `notes` | string | No | Text | Personal notes |
+| `html` | string | No | HTML | Custom HTML content |
+| `should_clean_html` | boolean | No | `true`/`false` | Auto-clean HTML (default: true) |
+
+### Output Schema
 
 ```json
 {
-  "id": "new-doc-id",
-  "url": "https://read.readwise.io/...",
-  "title": "Document Title",
-  "status": "created"  // or "updated" if URL already existed
+  "id": "...",
+  "url": "...",
+  "title": "...",
+  "status": "created" | "updated"
 }
 ```
 
-### update_document.py / bulk_update_documents.py
+### Examples
+
+```bash
+# Save a URL
+echo '{"url": "https://example.com/article"}' | python scripts/create_document.py
+
+# Save with title and tags
+echo '{"url": "https://example.com", "title": "My Article", "tags": ["important"]}' | python scripts/create_document.py
+```
+
+---
+
+## update_document.py
+
+Update a single document in your Reader library.
+
+### Usage
+
+```bash
+echo '<json>' | python scripts/update_document.py
+python scripts/update_document.py --file payload.json
+```
+
+### Input Schema
+
+| Field | Type | Required | Valid Values | Description |
+|-------|------|----------|--------------|-------------|
+| `id` | string | **Yes** | Document ID | ID of document to update |
+| `title` | string | No | Text | New title |
+| `author` | string | No | Text | New author |
+| `summary` | string | No | Text | New summary |
+| `published_date` | ISO 8601 | No | `2020-07-14T20:11:24+00:00` | New publication date |
+| `image_url` | string | No | Valid URL | New cover image |
+| `location` | string | No | `new`, `later`, `shortlist`, `archive`, `feed` | New location |
+| `category` | string | No | `article`, `email`, `rss`, `highlight`, `note`, `pdf`, `epub`, `tweet`, `video` | New category |
+| `tags` | string[] | No | Array of strings | Replace all tags |
+| `notes` | string | No | Text | Replace notes (empty to clear) |
+| `seen` | boolean | No | `true`/`false` | Mark as seen/unseen |
+
+### Output Schema
 
 ```json
 {
-  "id": "doc-id",
+  "id": "...",
   "updated": true,
   "document": {...}
 }
 ```
 
-### delete_document.py
+### Examples
+
+```bash
+# Archive a document
+echo '{"id": "abc123", "location": "archive"}' | python scripts/update_document.py
+
+# Update tags and notes
+echo '{"id": "abc123", "tags": ["read"], "notes": "Great reference"}' | python scripts/update_document.py
+```
+
+---
+
+## bulk_update_documents.py
+
+Update multiple documents in a single request (max 50).
+
+### Usage
+
+```bash
+echo '<json>' | python scripts/bulk_update_documents.py
+python scripts/bulk_update_documents.py --file payload.json
+```
+
+### Input Schema
+
+| Field | Type | Required | Valid Values | Description |
+|-------|------|----------|--------------|-------------|
+| `updates` | array | **Yes** | Array of update objects | Updates to apply (max 50) |
+
+#### Update Object Fields
+
+| Field | Type | Required | Valid Values | Description |
+|-------|------|----------|--------------|-------------|
+| `id` | string | **Yes** | Document ID | Document to update |
+| `title` | string | No | Text | New title |
+| `location` | string | No | `new`, `later`, `shortlist`, `archive`, `feed` | New location |
+| `category` | string | No | `article`, `email`, `rss`, `highlight`, `note`, `pdf`, `epub`, `tweet`, `video` | New category |
+| `tags` | string[] | No | Array of strings | Replace all tags |
+| `notes` | string | No | Text | Replace notes |
+| `seen` | boolean | No | `true`/`false` | Mark as seen/unseen |
+
+### Output Schema
+
+```json
+{
+  "count": 2,
+  "results": [{"id": "...", "updated": true}]
+}
+```
+
+### Examples
+
+```bash
+# Archive multiple documents
+echo '{"updates": [{"id": "abc", "location": "archive"}, {"id": "def", "location": "archive"}]}' | python scripts/bulk_update_documents.py
+```
+
+---
+
+## delete_document.py
+
+Remove one or more documents from your Reader library.
+
+### Usage
+
+```bash
+echo '<json>' | python scripts/delete_document.py
+python scripts/delete_document.py --file payload.json
+```
+
+### Input Schema
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ids` | string[] | **Yes** | Array of document IDs to delete |
+
+### Output Schema
 
 ```json
 {
@@ -182,16 +286,49 @@ The scripts require:
 }
 ```
 
-### list_tags.py
+### Examples
+
+```bash
+# Delete documents
+echo '{"ids": ["abc123", "def456"]}' | python scripts/delete_document.py
+```
+
+---
+
+## list_tags.py
+
+List all tags in your Reader library.
+
+### Usage
+
+```bash
+python scripts/list_tags.py [OPTIONS]
+```
+
+### CLI Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `--cursor` | string | Pagination cursor |
+| `--all` | boolean | Fetch all pages |
+
+### Output Schema
 
 ```json
 {
   "count": 15,
-  "results": [
-    {"key": "important", "name": "Important"},
-    {"key": "read-later", "name": "Read Later"}
-  ]
+  "results": [{"key": "tag", "name": "Tag"}]
 }
+```
+
+### Examples
+
+```bash
+# List all tags
+python scripts/list_tags.py
+
+# Fetch all tags (all pages)
+python scripts/list_tags.py --all
 ```
 
 ---
