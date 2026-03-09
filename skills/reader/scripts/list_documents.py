@@ -91,15 +91,14 @@ REFERENCES:
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
-from typing import Any
 
 # Add scripts folder to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import (
+    APIError,
     EXIT_INVALID_ARGS,
     create_client,
     handle_response,
@@ -208,7 +207,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="List documents from Readwise Reader library",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__.split("EXAMPLES:")[1] if "EXAMPLES:" in __doc__ else None,
+        epilog=__doc__.split("EXAMPLES:")[1] if __doc__ and "EXAMPLES:" in __doc__ else None,
     )
 
     parser.add_argument("--location", help="Filter by location (new, later, shortlist, archive, feed)")
@@ -222,18 +221,10 @@ def main():
     parser.add_argument("--all", action="store_true", help="Fetch all pages")
     parser.add_argument("--output", choices=["json", "summary"], default="json", help="Output format")
 
-    args = parser.parse_args()
-
     try:
+        args = parser.parse_args()
         params = build_params(args)
-    except ValueError as e:
-        output_error(type("APIError", (), {
-            "to_json": lambda: {"error": {"type": "validation_error", "message": str(e)}},
-            "exit_code": EXIT_INVALID_ARGS
-        })())
-
-    with create_client() as client:
-        try:
+        with create_client() as client:
             if args.all:
                 data = fetch_all_pages(client, params)
             elif args.cursor:
@@ -249,11 +240,17 @@ def main():
                 if "fetched" not in data:
                     data["fetched"] = len(data.get("results", []))
                 output_json(data)
-
-        except Exception as e:
-            if hasattr(e, "to_json"):
-                output_error(e)
-            raise
+    except ValueError as e:
+        output_error(APIError(
+            type="validation_error",
+            message=str(e),
+            exit_code=EXIT_INVALID_ARGS
+        ))
+    except APIError as e:
+        output_error(e)
+    except Exception as e:
+        # Re-raise non-APIError exceptions
+        raise
 
 
 if __name__ == "__main__":
