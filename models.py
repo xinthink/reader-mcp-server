@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 
 
 @dataclass
@@ -77,3 +77,80 @@ class ListDocumentResponse:
     count: int
     results: List[ReaderDocument]
     nextPageCursor: Optional[str] = None
+
+
+@dataclass
+class CreateDocumentResponse:
+    """Response from creating/saving a document"""
+    id: str
+    url: str
+    title: str
+    status: Literal["created", "updated"]
+
+
+@dataclass
+class UpdateDocumentResponse:
+    """Response from updating a document"""
+    id: str
+    updated: bool
+    document: Dict[str, Any]
+
+
+@dataclass
+class BulkUpdateResult:
+    """Individual result item from bulk update operation"""
+    id: str
+    success: bool
+    error: Optional[str] = None
+
+
+@dataclass
+class BulkUpdateResponse:
+    """Response from bulk updating documents"""
+    count: int
+    results: List[BulkUpdateResult]
+
+
+@dataclass
+class DeleteDocumentResponse:
+    """Response from deleting document(s)"""
+    deleted: int
+    ids: List[str]
+
+
+@dataclass
+class Tag:
+    """Tag object from Reader API"""
+    key: str
+    name: str
+
+
+@dataclass
+class ListTagsResponse:
+    """Response from listing tags"""
+    count: int
+    results: List[Tag]
+
+
+@dataclass
+class RateLimitError(Exception):
+    """Error response for rate limit (429) errors"""
+    error_type: str = "rate_limit_error"
+    message: str = "Rate limit exceeded"
+    retry_after_seconds: int = 60
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for error response"""
+        return {
+            "error": {
+                "type": self.error_type,
+                "message": self.message,
+                "retry_after_seconds": self.retry_after_seconds,
+            }
+        }
+
+
+@dataclass
+class AuthCheckResponse:
+    """Response from authentication check endpoint"""
+    authenticated: bool

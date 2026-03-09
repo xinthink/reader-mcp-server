@@ -8,4 +8,5 @@ dependencies = [
     "dotenv>=0.9.9",
     "httpx>=0.28.1",
     "mcp[cli]>=1.4.1",
+    "pydantic>=2.0",
 ]
