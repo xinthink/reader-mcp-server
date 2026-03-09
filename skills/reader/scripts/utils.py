@@ -13,7 +13,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, NoReturn, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -88,8 +88,8 @@ def create_client(timeout: float = 30.0) -> httpx.Client:
     )
 
 
-def output_error(error: APIError) -> None:
-    """Output error to stderr in JSON format and exit."""
+def raise_error(error: APIError) -> NoReturn:
+    """Raise an error by outputting to stderr in JSON format and exiting."""
     print(json.dumps(error.to_json()), file=sys.stderr)
     sys.exit(error.exit_code)
 

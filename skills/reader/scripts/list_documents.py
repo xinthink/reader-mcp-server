@@ -18,7 +18,6 @@ OPTIONS:
     --with-content         Include full HTML content in response
     --cursor <str>         Pagination cursor for next page
     --all                  Fetch all pages automatically
-    --output <str>         Output format: json (default), summary
     --help                 Show this help message
 
 OUTPUT:
@@ -85,9 +84,6 @@ EXAMPLES:
 
     # Get a specific document by ID
     python scripts/list_documents.py --id "abc123def456"
-
-REFERENCES:
-    - Usage Guide: references/usage-guide.md
 """
 
 import argparse
@@ -102,7 +98,7 @@ from utils import (
     EXIT_INVALID_ARGS,
     create_client,
     handle_response,
-    output_error,
+    raise_error,
     output_json,
 )
 
@@ -183,31 +179,10 @@ def fetch_all_pages(client, params: dict) -> dict:
     }
 
 
-def format_summary(data: dict) -> str:
-    """Format results as a human-readable summary."""
-    lines = [
-        f"Total: {data.get('count', 0)} documents",
-        f"Fetched: {data.get('fetched', len(data.get('results', [])))}",
-        "",
-    ]
-
-    for doc in data.get("results", [])[:20]:  # Limit to first 20 for summary
-        title = doc.get("title", "Untitled")
-        location = doc.get("location", "unknown")
-        progress = doc.get("reading_progress", 0)
-        lines.append(f"- [{location}] {title} ({progress*100:.0f}%)")
-
-    if len(data.get("results", [])) > 20:
-        lines.append(f"... and {len(data['results']) - 20} more")
-
-    return "\n".join(lines)
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="List documents from Readwise Reader library",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__.split("EXAMPLES:")[1] if __doc__ and "EXAMPLES:" in __doc__ else None,
     )
 
     parser.add_argument("--location", help="Filter by location (new, later, shortlist, archive, feed)")
@@ -219,7 +194,6 @@ def main():
     parser.add_argument("--with-content", action="store_true", help="Include HTML content")
     parser.add_argument("--cursor", help="Pagination cursor")
     parser.add_argument("--all", action="store_true", help="Fetch all pages")
-    parser.add_argument("--output", choices=["json", "summary"], default="json", help="Output format")
 
     try:
         args = parser.parse_args()
@@ -233,21 +207,18 @@ def main():
             else:
                 data = fetch_page(client, params)
 
-            if args.output == "summary":
-                print(format_summary(data))
-            else:
-                # Add fetched count if not present
-                if "fetched" not in data:
-                    data["fetched"] = len(data.get("results", []))
-                output_json(data)
+            # Add fetched count if not present
+            if "fetched" not in data:
+                data["fetched"] = len(data.get("results", []))
+            output_json(data)
     except ValueError as e:
-        output_error(APIError(
+        raise_error(APIError(
             type="validation_error",
             message=str(e),
             exit_code=EXIT_INVALID_ARGS
         ))
     except APIError as e:
-        output_error(e)
+        raise_error(e)
     except Exception as e:
         # Re-raise non-APIError exceptions
         raise

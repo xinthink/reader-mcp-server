@@ -79,7 +79,6 @@ REFERENCES:
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -91,7 +90,7 @@ from utils import (
     EXIT_INVALID_ARGS,
     create_client,
     handle_response,
-    output_error,
+    raise_error,
     output_json,
     read_payload,
 )
@@ -145,13 +144,13 @@ def main():
     try:
         payload = read_payload(args.file)
     except APIError as e:
-        output_error(e)
+        raise_error(e)
 
     # Validate payload
     try:
         validate_payload(payload)
     except APIError as e:
-        output_error(e)
+        raise_error(e)
 
     # Dry run - just validate
     if args.dry_run:
@@ -164,7 +163,7 @@ def main():
             result = create_document(client, payload)
             output_json(result)
         except APIError as e:
-            output_error(e)
+            raise_error(e)
 
 
 if __name__ == "__main__":
