@@ -60,6 +60,9 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import (
+    APIError,
+    EXIT_RATE_LIMIT,
+    MAX_RETRIES,
     RateLimitError,
     create_client,
     handle_response,
@@ -82,20 +85,31 @@ def fetch_all_tags(client) -> dict:
     """Fetch all tags across all pages with rate limit retry logic."""
     all_tags = []
     cursor: Optional[str] = None
+    retry_count = 0
 
     while True:
         try:
             data = fetch_tags_page(client, cursor)
         except RateLimitError as e:
-            # Sleep for retry_after_seconds and retry
+            if retry_count >= MAX_RETRIES:
+                raise APIError(
+                    type="rate_limit_exceeded",
+                    message=f"Rate limit exceeded after {MAX_RETRIES} retries",
+                    hint="Consider reducing request frequency or waiting before retrying",
+                    exit_code=EXIT_RATE_LIMIT,
+                )
             time.sleep(e.retry_after_seconds)
-            data = fetch_tags_page(client, cursor)
+            retry_count += 1
+            continue  # Retry the request
+
+        # Reset retry count on success
+        retry_count = 0
 
         all_tags.extend(data.get("results", []))
         cursor = data.get("nextPageCursor")
-
         if not cursor:
             break
+        time.sleep(0.01) # short break between pages
 
     return {
         "count": len(all_tags),

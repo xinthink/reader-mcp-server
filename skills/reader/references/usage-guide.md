@@ -90,8 +90,30 @@ python scripts/list_documents.py [OPTIONS]
 {
   "count": 2304,
   "fetched": 20,
-  "next_cursor": "abc123...",
-  "results": [...]
+  "nextPageCursor": "abc123...",
+  "results": [
+    {
+      "id": "<document id>",
+      "title": "<document title>",
+      "url": "<original url>",
+      "source_url": "<reader url>",
+      "author": "<author name>",
+      "source": "<source name>",
+      "category": "<content category>",
+      "location": "<current location>",
+      "tags": {"tag_key": {"name": "Tag Name"}},
+      "site_name": "<website name>",
+      "word_count": <word count>,
+      "notes": "<user notes>",
+      "summary": "<document summary>",
+      "published_date": "<publication date>",
+      "image_url": "<cover image url>",
+      "reading_progress": <0.0-1.0>,
+      "created_at": "<ISO 8601 datetime>",
+      "updated_at": "<ISO 8601 datetime>",
+      "saved_at": "<ISO 8601 datetime>"
+    }
+  ]
 }
 ```
 

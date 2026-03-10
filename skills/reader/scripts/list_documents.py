@@ -97,6 +97,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils import (
     APIError,
     EXIT_INVALID_ARGS,
+    EXIT_RATE_LIMIT,
+    MAX_RETRIES,
     RateLimitError,
     create_client,
     handle_response,
@@ -164,38 +166,50 @@ def fetch_all_pages(client, params: dict) -> dict:
     """Fetch all pages of results with rate limit retry logic."""
     all_results = []
     total_count = 0
-    cursor = None
+    page_params = {**params}
+    cursor = page_params.get("pageCursor", None)
     page = 0
+    retry_count = 0
 
     while True:
-        page_params = {**params}
         if cursor:
             page_params["pageCursor"] = cursor
         else:
             page_params.pop("pageCursor", None)
 
         try:
+            # print(f"fetching page {page_params}", file=sys.stderr)
             data = fetch_page(client, page_params)
         except RateLimitError as e:
-            # Sleep for retry_after_seconds and retry
+            if retry_count >= MAX_RETRIES:
+                raise APIError(
+                    type="rate_limit_exceeded",
+                    message=f"Rate limit exceeded after {MAX_RETRIES} retries",
+                    hint="Consider reducing request frequency or waiting before retrying",
+                    exit_code=EXIT_RATE_LIMIT,
+                )
             time.sleep(e.retry_after_seconds)
-            data = fetch_page(client, page_params)
+            retry_count += 1
+            continue  # Retry the request
+
+        # Reset retry count on success
+        retry_count = 0
 
         total_count = data.get("count", 0)
         results = data.get("results", [])
         all_results.extend(results)
 
         cursor = data.get("nextPageCursor")
-        page += 1
-
         if not cursor:
             break
+
+        page += 1
+        time.sleep(0.01) # short break between pages
 
     return {
         "count": total_count,
         "fetched": len(all_results),
         "pages": page,
-        "next_cursor": None,
         "results": all_results,
     }
 
