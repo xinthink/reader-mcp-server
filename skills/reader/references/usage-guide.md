@@ -392,14 +392,15 @@ Common error types:
 
 ## Rate Limits
 
-Scripts automatically retry on rate limits (HTTP 429) and server errors (5xx).
+| Error Type | Retry Location | Max Retries | Backoff | Exit Code |
+|------------|----------------|-------------|---------|-----------|
+| **429** (rate limit) | Script-level (`--all` only) | 3 | `Retry-After` header (60s fallback) | 3 if exhausted |
+| **5xx** (server) | `handle_response()` (auto) | 3 | Exponential: 2^retry (1s, 2s, 4s) | 1 if exhausted |
 
-Built-in retry behavior:
-- Max 3 retries
-- Respects `Retry-After` header
-- Exponential backoff for server errors
-
-No manual intervention needed unless exit code 3 (retries exhausted).
+**Key points:**
+- 429: `handle_response()` raises `RateLimitError` immediately; scripts with `--all` implement retry loop
+- 5xx: Auto-retried in `handle_response()` before raising `APIError`
+- Retry counter resets on success
 
 ---
 
