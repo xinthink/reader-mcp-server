@@ -82,9 +82,12 @@ python scripts/list_documents.py [OPTIONS]
 | `--limit` | integer | 20 | 1-100 | Max results per page |
 | `--with-content` | boolean | false | - | Include HTML content |
 | `--cursor` | string | - | - | Pagination cursor |
-| `--all` | boolean | false | - | Fetch all pages |
+| `--all` | boolean | false | - | Fetch all pages (uses JSON Lines format) |
+| `--output` | string | stdout | File path | Output file (`.json` for standard, `.jsonl` for --all) |
 
 ### Output Schema
+
+**Standard Mode (default):**
 
 ```json
 {
@@ -117,10 +120,34 @@ python scripts/list_documents.py [OPTIONS]
 }
 ```
 
+**JSON Lines Mode (--all flag):**
+
+When using `--all`, output uses [JSON Lines](https://jsonlines.org/) format for efficient streaming:
+
+```
+Line 1 (metadata): {"metadata": {"total": 2304, "query": {"location": "archive", ...}, "timestamp": "2026-03-10T15:30:00Z"}}
+Line 2-N (data): {"id": "...", "title": "...", ...}
+Last line (summary): {"summary": {"fetched": 2304, "end": true}}
+```
+
+Benefits of JSON Lines format:
+- **Memory efficient**: Items are streamed one at a time, never buffered in memory
+- **Pipe-friendly**: Each line is valid JSON, works with `grep`, `jq`, etc.
+- **Progressive processing**: Consumers can process items as they arrive
+
+To extract only data lines (skip metadata/summary):
+```bash
+# Skip first and last lines
+python scripts/list_documents.py --all | tail -n +2 | head -n -1
+
+# Or filter by structure
+python scripts/list_documents.py --all | grep -v '"metadata"\|"summary"'
+```
+
 ### Examples
 
 ```bash
-# List documents in "later" folder
+# List documents in "later" folder (standard JSON to stdout)
 python scripts/list_documents.py --location later
 
 # Filter by category
@@ -129,8 +156,20 @@ python scripts/list_documents.py --category article
 # Filter by multiple tags
 python scripts/list_documents.py --tag important --tag reference
 
-# Fetch all documents in archive
+# Standard mode to file (complete JSON)
+python scripts/list_documents.py --location later --output later.json
+
+# Fetch all documents in archive (JSON Lines to stdout)
 python scripts/list_documents.py --location archive --all
+
+# Fetch all and write to file
+python scripts/list_documents.py --location archive --all --output archive.jsonl
+
+# Pipe to grep for filtering
+python scripts/list_documents.py --all | grep "python"
+
+# Pipe to jq for JSON processing (skip metadata/summary)
+python scripts/list_documents.py --all | tail -n +2 | head -n -1 | jq '.title'
 ```
 
 ---
@@ -332,9 +371,12 @@ python scripts/list_tags.py [OPTIONS]
 | Option | Type | Description |
 |--------|------|-------------|
 | `--cursor` | string | Pagination cursor |
-| `--all` | boolean | Fetch all pages |
+| `--all` | boolean | Fetch all pages (uses JSON Lines format) |
+| `--output` | string | Output file (`.json` for standard, `.jsonl` for --all) |
 
 ### Output Schema
+
+**Standard Mode (default):**
 
 ```json
 {
@@ -343,14 +385,36 @@ python scripts/list_tags.py [OPTIONS]
 }
 ```
 
+**JSON Lines Mode (--all flag):**
+
+```
+Line 1 (metadata): {"metadata": {"total": 100, "query": {}, "timestamp": "2026-03-10T15:30:00Z"}}
+Line 2-N (data): {"key": "tag-key", "name": "Tag Name"}
+Last line (summary): {"summary": {"fetched": 100, "end": true}}
+```
+
+**With --output flag:**
+
+- Standard mode: Writes complete JSON object to file
+- `--all` mode: Streams JSON Lines format to file
+
 ### Examples
 
 ```bash
-# List all tags
+# List all tags (standard JSON to stdout)
 python scripts/list_tags.py
 
-# Fetch all tags (all pages)
+# Standard mode to file
+python scripts/list_tags.py --output tags.json
+
+# Fetch all tags (JSON Lines to stdout)
 python scripts/list_tags.py --all
+
+# Fetch all and write to file
+python scripts/list_tags.py --all --output tags.jsonl
+
+# Pipe to grep for filtering
+python scripts/list_tags.py --all | grep "important"
 ```
 
 ---
@@ -411,15 +475,37 @@ Common error types:
 Use `--cursor` for manual pagination or `--all` to fetch all pages automatically:
 
 ```bash
-# Manual pagination
+# Manual pagination (standard JSON output)
 python scripts/list_documents.py --location later
-# Use next_cursor from response for next page
+# Use nextPageCursor from response for next page
 python scripts/list_documents.py --location later --cursor "abc123..."
 
-# Automatic (fetch all)
+# Automatic with JSON Lines streaming
 python scripts/list_documents.py --location later --all
+
+# Automatic with file output
+python scripts/list_documents.py --location later --all --output later.jsonl
 ```
 
 ### list_tags.py
 
-Same pagination pattern with `--cursor` and `--all` flags.
+Same pagination pattern with `--cursor` and `--all` flags:
+
+```bash
+# Single page (standard JSON)
+python scripts/list_tags.py
+
+# All pages (JSON Lines streaming)
+python scripts/list_tags.py --all
+
+# All pages to file
+python scripts/list_tags.py --all --output tags.jsonl
+```
+
+### Output Format Comparison
+
+| Mode | Format | Use Case |
+|------|--------|----------|
+| Standard (no flags) | JSON array | Small result sets, need random access |
+| `--all` | JSON Lines | Large datasets, streaming, piping to other tools |
+| `--all --output file.jsonl` | JSON Lines to file | Archiving, processing large datasets later |

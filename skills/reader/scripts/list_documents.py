@@ -17,39 +17,23 @@ OPTIONS:
     --limit <int>          Maximum results per page (1-100, default: 20)
     --with-content         Include full HTML content in response
     --cursor <str>         Pagination cursor for next page
-    --all                  Fetch all pages automatically
+    --all                  Fetch all pages automatically (uses JSON Lines format)
+    --output <file>        Output file path (.jsonl recommended for --all)
     --help                 Show this help message
 
-OUTPUT:
+OUTPUT (standard mode):
     JSON object to stdout:
     {
         "count": <total matching documents>,
         "fetched": <number of results in this response>,
         "next_cursor": "<cursor for next page or null>",
-        "results": [
-            {
-                "id": "<document id>",
-                "title": "<document title>",
-                "url": "<original url>",
-                "source_url": "<reader url>",
-                "author": "<author name>",
-                "source": "<source name>",
-                "category": "<content category>",
-                "location": "<current location>",
-                "tags": {"tag_key": {"name": "Tag Name"}},
-                "site_name": "<website name>",
-                "word_count": <word count>,
-                "notes": "<user notes>",
-                "summary": "<document summary>",
-                "published_date": "<publication date>",
-                "image_url": "<cover image url>",
-                "reading_progress": <0.0-1.0>,
-                "created_at": "<ISO 8601 datetime>",
-                "updated_at": "<ISO 8601 datetime>",
-                "saved_at": "<ISO 8601 datetime>"
-            }
-        ]
+        "results": [...]
     }
+
+OUTPUT (--all mode, JSON Lines format):
+    Line 1 (metadata): {"metadata": {"total": N, "query": {...}, "timestamp": "..."}}
+    Lines 2-N (data): {"id": "...", "title": "...", ...}
+    Last line (summary): {"summary": {"fetched": N, "end": true}}
 
 ERRORS:
     Exit codes:
@@ -76,20 +60,29 @@ EXAMPLES:
     # Get recently updated documents with HTML content
     python scripts/list_documents.py --updated-after "2024-01-01T00:00:00Z" --with-content
 
-    # Fetch all documents in archive (all pages)
+    # Fetch all documents in archive (JSON Lines format)
     python scripts/list_documents.py --location archive --all
+
+    # Fetch all and write to file
+    python scripts/list_documents.py --location archive --all --output archive.jsonl
 
     # Filter by multiple tags
     python scripts/list_documents.py --tag important --tag reference
 
     # Get a specific document by ID
     python scripts/list_documents.py --id "abc123def456"
+
+    # Pipe to grep for filtering
+    python scripts/list_documents.py --all | grep "python"
 """
 
 import argparse
+import asyncio
+import json
 import sys
-import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import AsyncGenerator, Optional
 
 # Add scripts folder to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -104,6 +97,7 @@ from utils import (
     handle_response,
     raise_error,
     output_json,
+    output_jsonlines,
 )
 
 
@@ -162,23 +156,32 @@ def fetch_page(client, params: dict) -> dict:
     return handle_response(response, client)
 
 
-def fetch_all_pages(client, params: dict) -> dict:
-    """Fetch all pages of results with rate limit retry logic."""
-    all_results = []
+async def fetch_all_pages_generator(
+    client, params: dict
+) -> AsyncGenerator[dict, None]:
+    """
+    Fetch all pages, yielding documents one at a time in JSON Lines format.
+
+    Yields:
+        1. Metadata dict first: {"metadata": {"total": N, "query": {...}, "timestamp": "..."}}
+        2. Document dicts for each document
+        3. Summary dict last: {"summary": {"fetched": N, "end": true}}
+    """
     total_count = 0
+    fetched_count = 0
     page_params = {**params}
     cursor = page_params.get("pageCursor", None)
-    page = 0
     retry_count = 0
+    first_page = True
+
+    # Remove pageCursor from params for the first request
+    if cursor:
+        page_params["pageCursor"] = cursor
+    else:
+        page_params.pop("pageCursor", None)
 
     while True:
-        if cursor:
-            page_params["pageCursor"] = cursor
-        else:
-            page_params.pop("pageCursor", None)
-
         try:
-            # print(f"fetching page {page_params}", file=sys.stderr)
             data = fetch_page(client, page_params)
         except RateLimitError as e:
             if retry_count >= MAX_RETRIES:
@@ -188,33 +191,59 @@ def fetch_all_pages(client, params: dict) -> dict:
                     hint="Consider reducing request frequency or waiting before retrying",
                     exit_code=EXIT_RATE_LIMIT,
                 )
-            time.sleep(e.retry_after_seconds)
+            await asyncio.sleep(e.retry_after_seconds)
             retry_count += 1
             continue  # Retry the request
 
         # Reset retry count on success
         retry_count = 0
 
-        total_count = data.get("count", 0)
-        results = data.get("results", [])
-        all_results.extend(results)
+        # On first page, yield metadata
+        if first_page:
+            total_count = data.get("count", 0)
+            # Build query info for metadata (strip None values)
+            query_info = {
+                "location": params.get("location"),
+                "category": params.get("category"),
+                "tags": params.get("tags", []),
+                "updatedAfter": params.get("updatedAfter"),
+                "withContent": params.get("withHtmlContent", False),
+            }
+            metadata = {
+                "metadata": {
+                    "total": total_count,
+                    "query": query_info,
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+            }
+            yield metadata
+            first_page = False
 
+        # Yield each document from this page
+        results = data.get("results", [])
+        for doc in results:
+            yield doc
+            fetched_count += 1
+
+        # Check for more pages
         cursor = data.get("nextPageCursor")
         if not cursor:
             break
 
-        page += 1
-        time.sleep(0.01) # short break between pages
+        page_params["pageCursor"] = cursor
+        await asyncio.sleep(0.01)  # Short break between pages
 
-    return {
-        "count": total_count,
-        "fetched": len(all_results),
-        "pages": page,
-        "results": all_results,
+    # Yield summary at the end
+    yield {
+        "summary": {
+            "fetched": fetched_count,
+            "end": True,
+        }
     }
 
 
-def main():
+async def async_main():
+    """Async main function to support async generators."""
     parser = argparse.ArgumentParser(
         description="List documents from Readwise Reader library",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -228,21 +257,29 @@ def main():
     parser.add_argument("--limit", type=int, default=20, help="Max results per page (default: 20)")
     parser.add_argument("--with-content", action="store_true", help="Include HTML content")
     parser.add_argument("--cursor", help="Pagination cursor")
-    parser.add_argument("--all", action="store_true", help="Fetch all pages")
+    parser.add_argument("--all", action="store_true", help="Fetch all pages (uses JSON Lines format)")
+    parser.add_argument("--output", help="Output file path (.json or .jsonl recommended)")
 
+    args = parser.parse_args()
+
+    params = build_params(args)
     try:
-        args = parser.parse_args()
-        params = build_params(args)
         with create_client() as client:
             if args.all:
-                data = fetch_all_pages(client, params)
+                # Use streaming JSON Lines format
+                generator = fetch_all_pages_generator(client, params)
+                await output_jsonlines(generator, args.output)
             else:
+                # Standard JSON format
                 data = fetch_page(client, params)
-
-            # Add fetched count if not present
-            if "fetched" not in data:
+                # Add fetched count
                 data["fetched"] = len(data.get("results", []))
-            output_json(data)
+                if args.output:
+                    # Write to file
+                    with open(args.output, "w") as f:
+                        f.write(json.dumps(data, indent=2, default=str))
+                else:
+                    output_json(data)
     except RateLimitError as e:
         raise_error(e)
     except ValueError as e:
@@ -254,6 +291,11 @@ def main():
         ))
     except APIError as e:
         raise_error(e)
+
+
+def main():
+    """Main entry point."""
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":

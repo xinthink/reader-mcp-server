@@ -13,7 +13,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, NoReturn, Optional
+from typing import Any, AsyncGenerator, NoReturn, Optional, TextIO
 
 import httpx
 from dotenv import load_dotenv
@@ -207,6 +207,48 @@ def handle_response(
 def output_json(data: Any) -> None:
     """Output data as JSON to stdout."""
     print(json.dumps(data, indent=2, default=str))
+
+
+async def output_jsonlines(
+    generator: AsyncGenerator[dict, None],
+    output_file: Optional[str] = None
+) -> int:
+    """
+    Consume async generator and output as JSON Lines.
+
+    Args:
+        generator: Async generator yielding dicts (metadata first, then items, then summary)
+        output_file: Optional file path. If None, writes to stdout.
+
+    Returns:
+        Number of items written (excluding metadata and summary)
+    """
+    output: TextIO
+    close_on_exit = False
+
+    if output_file:
+        output = open(output_file, "w")
+        close_on_exit = True
+    else:
+        output = sys.stdout
+
+    count = 0
+    try:
+        async for item in generator:
+            # Check if this is a metadata or summary line
+            if "metadata" in item or "summary" in item:
+                # These are control lines, still output them
+                output.write(json.dumps(item, default=str) + "\n")
+            else:
+                # This is a data item
+                output.write(json.dumps(item, default=str) + "\n")
+                count += 1
+            output.flush()
+    finally:
+        if close_on_exit:
+            output.close()
+
+    return count
 
 
 def read_payload(file_path: Optional[str] = None) -> dict:

@@ -9,10 +9,11 @@ USAGE:
 
 OPTIONS:
     --cursor <str>    Pagination cursor for next page
-    --all             Fetch all pages automatically
+    --all             Fetch all pages automatically (uses JSON Lines format)
+    --output <file>   Output file path (.json or .jsonl recommended)
     --help            Show this help message
 
-OUTPUT:
+OUTPUT (standard mode):
     JSON object to stdout:
     {
         "count": <total tags>,
@@ -23,6 +24,11 @@ OUTPUT:
             }
         ]
     }
+
+OUTPUT (--all mode, JSON Lines format):
+    Line 1 (metadata): {"metadata": {"total": N, "query": {}, "timestamp": "..."}}
+    Lines 2-N (data): {"key": "...", "name": "..."}
+    Last line (summary): {"summary": {"fetched": N, "end": true}}
 
 ERRORS:
     Exit codes:
@@ -46,21 +52,30 @@ EXAMPLES:
     # List all tags
     python scripts/list_tags.py
 
-    # Fetch all pages
+    # Fetch all pages (JSON Lines format to stdout)
     python scripts/list_tags.py --all
+
+    # Fetch all and write to file
+    python scripts/list_tags.py --all --output tags.jsonl
+
+    # Pipe to grep for filtering
+    python scripts/list_tags.py --all | grep "important"
 """
 
 import argparse
+import asyncio
+import json
 import sys
-import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 # Add scripts folder to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import (
     APIError,
+    EXIT_INVALID_ARGS,
     EXIT_RATE_LIMIT,
     MAX_RETRIES,
     RateLimitError,
@@ -68,6 +83,7 @@ from utils import (
     handle_response,
     raise_error,
     output_json,
+    output_jsonlines,
 )
 
 
@@ -81,11 +97,20 @@ def fetch_tags_page(client, cursor: Optional[str] = None) -> dict:
     return handle_response(response, client)
 
 
-def fetch_all_tags(client) -> dict:
-    """Fetch all tags across all pages with rate limit retry logic."""
-    all_tags = []
+async def fetch_all_tags_generator(client) -> AsyncGenerator[dict, None]:
+    """
+    Fetch all tags, yielding one at a time in JSON Lines format.
+
+    Yields:
+        1. Metadata dict first: {"metadata": {"total": N, "query": {}, "timestamp": "..."}}
+        2. Tag dicts for each tag
+        3. Summary dict last: {"summary": {"fetched": N, "end": true}}
+    """
+    fetched_count = 0
     cursor: Optional[str] = None
     retry_count = 0
+    first_page = True
+    total_count = 0
 
     while True:
         try:
@@ -98,52 +123,98 @@ def fetch_all_tags(client) -> dict:
                     hint="Consider reducing request frequency or waiting before retrying",
                     exit_code=EXIT_RATE_LIMIT,
                 )
-            time.sleep(e.retry_after_seconds)
+            await asyncio.sleep(e.retry_after_seconds)
             retry_count += 1
-            continue  # Retry the request
+            continue
 
         # Reset retry count on success
         retry_count = 0
 
-        all_tags.extend(data.get("results", []))
+        # On first page, yield metadata
+        if first_page:
+            total_count = data.get("count", 0)
+            metadata = {
+                "metadata": {
+                    "total": total_count,
+                    "query": {},
+                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                }
+            }
+            yield metadata
+            first_page = False
+
+        # Yield each tag from this page
+        results = data.get("results", [])
+        for tag in results:
+            yield tag
+            fetched_count += 1
+
+        # Check for more pages
         cursor = data.get("nextPageCursor")
         if not cursor:
             break
-        time.sleep(0.01) # short break between pages
 
-    return {
-        "count": len(all_tags),
-        "results": all_tags,
+        await asyncio.sleep(0.01)  # Short break between pages
+
+    # Yield summary at the end
+    yield {
+        "summary": {
+            "fetched": fetched_count,
+            "end": True,
+        }
     }
 
 
-def main():
+async def async_main():
+    """Async main function to support async generators."""
     parser = argparse.ArgumentParser(
         description="List all tags from Readwise Reader library",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--cursor", help="Pagination cursor")
-    parser.add_argument("--all", action="store_true", help="Fetch all pages")
+    parser.add_argument("--all", action="store_true", help="Fetch all pages (uses JSON Lines format)")
+    parser.add_argument("--output", help="Output file path (.json or .jsonl recommended)")
 
     args = parser.parse_args()
 
-    with create_client() as client:
-        try:
+    try:
+        with create_client() as client:
             if args.all:
-                data = fetch_all_tags(client)
-            elif args.cursor:
-                data = fetch_tags_page(client, args.cursor)
+                # Use streaming JSON Lines format
+                generator = fetch_all_tags_generator(client)
+                await output_jsonlines(generator, args.output)
             else:
-                data = fetch_tags_page(client)
+                # Standard JSON format
+                if args.cursor:
+                    data = fetch_tags_page(client, args.cursor)
+                else:
+                    data = fetch_tags_page(client)
 
-            output_json(data)
+                if args.output:
+                    # Write to file
+                    with open(args.output, "w") as f:
+                        f.write(json.dumps(data, indent=2, default=str))
+                else:
+                    output_json(data)
 
-        except RateLimitError as e:
-            raise_error(e)
-        except Exception as e:
-            if hasattr(e, "to_json"):
-                raise_error(e)  # type: ignore[arg-type]
-            raise
+    except RateLimitError as e:
+        raise_error(e)
+    except ValueError as e:
+        raise_error(APIError(
+            type="validation_error",
+            message=str(e),
+            hint="Check your input parameters",
+            exit_code=EXIT_INVALID_ARGS
+        ))
+    except Exception as e:
+        if hasattr(e, "to_json"):
+            raise_error(e)  # type: ignore[arg-type]
+        raise
+
+
+def main():
+    """Main entry point."""
+    asyncio.run(async_main())
 
 
 if __name__ == "__main__":
