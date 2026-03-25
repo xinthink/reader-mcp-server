@@ -2,6 +2,8 @@
 name: reader
 description: |
   Interact with Readwise Reader library to list, create, update, and delete documents. Use when the user wants to manage their saved articles, reading lists, or retrieve document content. Triggers on mentions of "Readwise Reader", "Reader API", or requests to save/read/archive web articles.
+homepage: https://github.com/xinthink/reader-mcp-server
+metadata: {"clawdbot":{"emoji":"📚","requires":{"bins":["pip", "python"],"env":["READWISE_ACCESS_TOKEN"]},"primaryEnv":"READWISE_ACCESS_TOKEN"}}
 ---
 
 # Reader
@@ -58,10 +60,6 @@ Install the required dependencies before using the scripts:
 ```bash
 pip install -r scripts/requirements.txt
 ```
-
-The scripts require:
-- `httpx` - Async HTTP client for API requests
-- `python-dotenv` - Environment variable management
 
 ## Common Workflows
 
